@@ -925,7 +925,7 @@ pytest tests/unit/test_circuit_breaker.py::test_circuit_breaker_opens_after_thre
 
 **Standalone:**
 ```bash
-python -m sidecar --config ./sidecar-config.yaml
+python3 -m sidecar --config ./sidecar-config.yaml
 ```
 
 **Container (Docker):**
@@ -1017,19 +1017,19 @@ The following decisions have been made for this POC:
 **Quick Start Commands:**
 ```bash
 # Setup
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 # TDD workflow
-pytest tests/unit/test_config.py -v        # Write test, run (Red)
+python3 -m pytest tests/unit/test_config.py -v    # Write test, run (Red)
 # ... implement ...
-pytest tests/unit/test_config.py -v        # Run (Green)
+python3 -m pytest tests/unit/test_config.py -v    # Run (Green)
 
 # Run all tests
-pytest
+python3 -m pytest
 
 # Coverage
-pytest --cov=sidecar --cov-report=term-missing
+python3 -m pytest --cov=sidecar --cov-report=term-missing
 ```
 
 ---
