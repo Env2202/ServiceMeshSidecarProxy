@@ -331,162 +331,237 @@ retry:
 ```
 service-mesh-sidecar/
 ├── README.md
-├── Cargo.toml                 # or go.mod, package.json, etc.
+├── pyproject.toml             # Project metadata, dependencies, tooling
+├── .python-version            # Python version pin
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
 ├── docs/
 │   ├── architecture.md
 │   ├── configuration.md
 │   └── deployment.md
-├── src/
-│   ├── main.rs               # Entry point
+├── sidecar/                   # Main package (src layout)
+│   ├── __init__.py
+│   ├── main.py                # CLI entry point (click)
 │   ├── config/
-│   │   ├── mod.rs
-│   │   ├── loader.rs         # Load from file/env/K8s ConfigMap
-│   │   └── schema.rs         # Configuration schema (serde, etc.)
+│   │   ├── __init__.py
+│   │   ├── settings.py        # Pydantic Settings for configuration
+│   │   └── loader.py          # Load from file/env/K8s ConfigMap
 │   ├── listeners/
-│   │   ├── mod.rs
-│   │   ├── inbound.rs        # :15000 inbound listener
-│   │   └── outbound.rs       # :15001 outbound listener
+│   │   ├── __init__.py
+│   │   ├── inbound.py         # Inbound listener (aiohttp on :15000)
+│   │   └── outbound.py        # Outbound listener (aiohttp on :15001)
 │   ├── pipeline/
-│   │   ├── mod.rs
-│   │   ├── auth.rs           # Authentication middleware
-│   │   ├── rate_limit.rs     # Rate limiting middleware
-│   │   ├── router.rs         # Routing engine
-│   │   ├── load_balancer.rs  # LB algorithms
-│   │   ├── circuit_breaker.rs
-│   │   ├── retry.rs          # Retry handler
-│   │   └── timeout.rs        # Timeout enforcement
+│   │   ├── __init__.py
+│   │   ├── auth.py            # Authentication middleware
+│   │   ├── rate_limit.py      # Rate limiting middleware
+│   │   ├── router.py          # Routing engine
+│   │   ├── load_balancer.py   # LB algorithms
+│   │   ├── circuit_breaker.py # Circuit breaker logic
+│   │   ├── retry.py           # Retry handler (tenacity)
+│   │   └── timeout.py         # Timeout enforcement
 │   ├── discovery/
-│   │   ├── mod.rs
-│   │   ├── resolver.rs       # DNS-based or K8s-based discovery
-│   │   └── endpoint.rs       # Endpoint representation
+│   │   ├── __init__.py
+│   │   ├── resolver.py        # DNS-based or K8s-based discovery
+│   │   └── endpoint.py        # Endpoint representation
 │   ├── health/
-│   │   ├── mod.rs
-│   │   ├── checker.rs        # Active health checking
-│   │   └── tracker.rs        # Passive health tracking
+│   │   ├── __init__.py
+│   │   ├── checker.py         # Active health checking
+│   │   └── tracker.py         # Passive health tracking
 │   ├── security/
-│   │   ├── mod.rs
-│   │   ├── tls.rs            # TLS/mTLS handling
-│   │   └── auth.rs           # Authentication providers
+│   │   ├── __init__.py
+│   │   ├── tls.py             # TLS/mTLS handling
+│   │   └── auth.py            # Authentication providers
 │   ├── telemetry/
-│   │   ├── mod.rs
-│   │   ├── metrics.rs        # Prometheus metrics
-│   │   ├── tracing.rs        # OpenTelemetry tracing
-│   │   └── logging.rs        # Structured logging
+│   │   ├── __init__.py
+│   │   ├── metrics.py         # Prometheus metrics
+│   │   ├── tracing.py         # OpenTelemetry tracing
+│   │   └── logging.py         # Structured logging (structlog)
 │   ├── connection/
-│   │   ├── mod.rs
-│   │   ├── pool.rs           # Connection pooling
-│   │   └── http.rs           # HTTP client/server
+│   │   ├── __init__.py
+│   │   ├── pool.py            # Connection pooling
+│   │   └── http_client.py     # HTTP client (httpx)
 │   └── utils/
-│       ├── mod.rs
-│       ├── backoff.rs        # Retry backoff utilities
-│       └── time.rs           # Time utilities
-├── tests/
-│   ├── integration/
-│   │   ├── routing_test.rs
-│   │   ├── load_balance_test.rs
-│   │   └── circuit_breaker_test.rs
-│   └── e2e/
-│       └── mesh_e2e_test.rs
+│       ├── __init__.py
+│       ├── backoff.py         # Retry backoff utilities
+│       └── time.py            # Time utilities
+├── tests/                     # Test-driven: tests written FIRST
+│   ├── __init__.py
+│   ├── conftest.py            # Pytest fixtures
+│   ├── unit/                  # Unit tests (mocked dependencies)
+│   │   ├── test_config.py
+│   │   ├── test_router.py
+│   │   ├── test_load_balancer.py
+│   │   ├── test_circuit_breaker.py
+│   │   ├── test_rate_limiter.py
+│   │   ├── test_health_checker.py
+│   │   └── test_retry.py
+│   ├── integration/           # Integration tests (real components)
+│   │   ├── test_inbound_listener.py
+│   │   ├── test_outbound_listener.py
+│   │   ├── test_pipeline.py
+│   │   └── test_discovery.py
+│   └── e2e/                   # End-to-end tests
+│       └── test_sidecar_e2e.py
 ├── examples/
 │   ├── basic-config.yaml
 │   └── k8s-deployment.yaml
 └── scripts/
     ├── build.sh
-    └── test.sh
+    ├── test.sh
+    └── lint.sh
 ```
 
 ### 4.1 Directory Purpose
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/` | Core application code |
-| `src/config/` | Configuration loading and validation |
-| `src/listeners/` | Network listeners for inbound/outbound |
-| `src/pipeline/` | Request processing pipeline components |
-| `src/discovery/` | Service discovery mechanisms |
-| `src/health/` | Health checking logic |
-| `src/security/` | TLS, auth, and security features |
-| `src/telemetry/` | Metrics, tracing, logging |
-| `src/connection/` | Connection management |
-| `tests/` | Integration and E2E tests |
-| `examples/` | Example configurations and deployments |
-| `docs/` | Documentation |
+| `sidecar/` | Core application package (src layout) |
+| `sidecar/config/` | Configuration loading and Pydantic validation |
+| `sidecar/listeners/` | Async HTTP listeners (aiohttp) for inbound/outbound |
+| `sidecar/pipeline/` | Request processing pipeline components |
+| `sidecar/discovery/` | Service discovery mechanisms |
+| `sidecar/health/` | Active and passive health checking logic |
+| `sidecar/security/` | TLS, mTLS, and authentication features |
+| `sidecar/telemetry/` | Prometheus metrics, OpenTelemetry tracing, structlog |
+| `sidecar/connection/` | Connection pooling and httpx client |
+| `sidecar/utils/` | Shared utilities (backoff, time, etc.) |
+| `tests/` | **TDD: Tests written before implementation** |
+| `tests/unit/` | Unit tests with mocked dependencies |
+| `tests/integration/` | Integration tests for component interaction |
+| `tests/e2e/` | End-to-end tests with real HTTP |
+| `examples/` | Example configurations and K8s deployments |
+| `docs/` | Architecture, configuration, and deployment docs |
 
 ---
 
 ## 5. Technology Stack
 
-### 5.1 Recommended: Rust
+### 5.1 Primary: Python 3
 
 **Rationale:**
-- High performance (zero-cost abstractions)
-- Memory safety without garbage collection
-- Excellent async runtime (Tokio)
-- Strong ecosystem for network programming
-- Growing service mesh ecosystem (Linkerd, Envoy uses similar patterns)
+- Team preference and existing Docker environment
+- Rich async ecosystem with `asyncio`
+- Rapid development with excellent testing support
+- Strong typing with Pydantic for configuration safety
+- Mature HTTP libraries (`aiohttp`, `httpx`)
+- Easy integration with Prometheus, OpenTelemetry, and logging
 
-**Key Crates:**
-| Crate | Purpose |
-|-------|---------|
-| `tokio` | Async runtime |
-| `hyper` | HTTP/1.1 and HTTP/2 client/server |
-| `tower` | Middleware framework |
-| `tonic` | gRPC support |
-| `rustls` | TLS implementation |
-| `prometheus` | Metrics |
-| `opentelemetry` | Tracing |
-| `serde` + `serde_yaml` | Configuration |
-| `clap` | CLI argument parsing |
+**Core Dependencies:**
 
-### 5.2 Alternative: Go
-
-**Rationale:**
-- Excellent concurrency model (goroutines)
-- Strong Kubernetes ecosystem
-- Faster development iteration
-- Good libraries: Envoy proxy patterns, Istio components in Go
-
-**Key Packages:**
 | Package | Purpose |
 |---------|---------|
-| `net/http` | HTTP handling |
-| `google.golang.org/grpc` | gRPC |
-| `k8s.io/client-go` | Kubernetes API |
-| `go.uber.org/zap` | Logging |
-| `prometheus/client_golang` | Metrics |
+| `python>=3.10` | Runtime |
+| `aiohttp` | Async HTTP server/client for proxying requests |
+| `httpx` | Modern async HTTP client for outbound requests |
+| `fastapi` | Async web framework for sidecar admin API |
+| `uvicorn` | ASGI server for FastAPI |
+| `pydantic` | Configuration validation and settings management |
+| `pydantic-settings` | Environment-based configuration |
+| `pyyaml` | YAML configuration file parsing |
 
-### 5.3 Alternative: Node.js / TypeScript
+**Testing Dependencies:**
 
-**Rationale:**
-- Rapid prototyping
-- Good async I/O
-- Easier to find contributors
-
-**Key Packages:**
 | Package | Purpose |
 |---------|---------|
-| `express` / `fastify` | HTTP framework |
-| `@grpc/grpc-js` | gRPC |
-| `prom-client` | Prometheus metrics |
-| `@opentelemetry/*` | Tracing |
+| `pytest` | Test framework |
+| `pytest-asyncio` | Async test support for pytest |
+| `pytest-cov` | Code coverage reporting |
+| `httpx` (test client) | Async HTTP testing |
+| `respx` | Mock async HTTP for httpx |
+| `aioresponses` | Mock async HTTP for aiohttp |
+
+**Observability Dependencies:**
+
+| Package | Purpose |
+|---------|---------|
+| `prometheus-client` | Prometheus metrics |
+| `opentelemetry-api` | OpenTelemetry tracing API |
+| `opentelemetry-sdk` | OpenTelemetry SDK |
+| `opentelemetry-exporter-otlp` | OTLP trace exporter |
+| `structlog` | Structured logging |
+
+**Additional Utilities:**
+
+| Package | Purpose |
+|---------|---------|
+| `click` | CLI argument parsing |
+| `python-dotenv` | Environment file loading |
+| `tenacity` | Retry logic with backoff |
+| `aioretry` | Async retry decorator |
+
+**Project Setup (pyproject.toml):**
+```toml
+[project]
+name = "service-mesh-sidecar"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.9",
+    "httpx>=0.26",
+    "fastapi>=0.109",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "pyyaml>=6.0",
+    "click>=8.1",
+    "tenacity>=8.2",
+    "prometheus-client>=0.19",
+    "structlog>=24.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "respx>=0.21",
+    "aioresponses>=0.7",
+    "ruff>=0.2",
+    "mypy>=1.8",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --cov=sidecar --cov-report=term-missing"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+```
 
 ---
 
-## 6. Implementation Phases
+## 6. Implementation Phases (Test-Driven)
+
+> **TDD Rule**: For each task below, write the test(s) **first**, then implement to pass them.
 
 ### Phase 1: Foundation (MVP)
 
 **Goal:** Basic proxy that forwards requests with minimal features.
 
+**TDD Workflow per Task:**
+1. Write failing test in `tests/unit/` or `tests/integration/`
+2. Run test → verify it fails (Red)
+3. Implement minimal code to pass (Green)
+4. Refactor if needed (Refactor)
+5. Move to next task
+
 **Tasks:**
-- [ ] Project scaffolding and build setup
+- [ ] **Test**: `tests/unit/test_config.py` - Pydantic config schema validation
+- [ ] **Test**: `tests/unit/test_main.py` - CLI argument parsing
+- [ ] Project scaffolding: `pyproject.toml`, `sidecar/` package structure
+- [ ] **Test**: `tests/integration/test_inbound_listener.py` - aiohttp inbound server
+- [ ] **Test**: `tests/integration/test_outbound_listener.py` - aiohttp outbound client
 - [ ] Basic HTTP proxy (inbound → backend, outbound → destination)
-- [ ] Configuration file loading (YAML)
-- [ ] CLI with basic options (config path, ports)
-- [ ] Basic logging
+- [ ] **Test**: `tests/unit/test_config_loader.py` - YAML config loading
+- [ ] Configuration file loading (YAML via Pydantic)
+- [ ] CLI with basic options (config path, ports) using Click
+- [ ] Basic structured logging with structlog
 - [ ] Dockerfile and basic K8s manifests
 
-**Deliverable:** Sidecar can proxy HTTP traffic between services.
+**Deliverable:** Sidecar can proxy HTTP traffic between services. All tests pass.
 
 ---
 
@@ -494,15 +569,26 @@ service-mesh-sidecar/
 
 **Goal:** Intelligent request routing and distribution.
 
+**TDD Workflow per Task:**
+1. Write failing test first (Red)
+2. Implement to pass (Green)
+3. Refactor (Refactor)
+
 **Tasks:**
+- [ ] **Test**: `tests/unit/test_router.py` - Path/header/host matching
 - [ ] Path-based routing engine
 - [ ] Header-based routing
+- [ ] Host-based routing
+- [ ] **Test**: `tests/unit/test_load_balancer.py` - Round-robin algorithm
 - [ ] Round-robin load balancer
+- [ ] **Test**: `tests/unit/test_load_balancer.py` - Least-connections algorithm
 - [ ] Least-connections load balancer
+- [ ] **Test**: `tests/unit/test_discovery.py` - DNS resolver
 - [ ] Service discovery (DNS-based initially)
-- [ ] Connection pooling
+- [ ] **Test**: `tests/unit/test_connection_pool.py` - Connection pooling
+- [ ] Connection pooling with httpx
 
-**Deliverable:** Requests can be routed to multiple backends with load balancing.
+**Deliverable:** Requests can be routed to multiple backends with load balancing. All tests pass.
 
 ---
 
@@ -510,15 +596,21 @@ service-mesh-sidecar/
 
 **Goal:** Handle failures gracefully.
 
-**Tasks:**
-- [ ] Circuit breaker implementation
-- [ ] Retry logic with backoff
+**Tasks (TDD per feature):**
+- [ ] **Test**: `tests/unit/test_circuit_breaker.py` - State machine transitions
+- [ ] Circuit breaker implementation (closed → open → half-open)
+- [ ] **Test**: `tests/unit/test_retry.py` - Retry with exponential backoff
+- [ ] Retry logic with backoff (tenacity)
+- [ ] **Test**: `tests/unit/test_timeout.py` - Request timeout enforcement
 - [ ] Request timeouts
+- [ ] **Test**: `tests/unit/test_health_checker.py` - Active HTTP probes
 - [ ] Active health checks (HTTP probes)
+- [ ] **Test**: `tests/unit/test_health_tracker.py` - Passive failure tracking
 - [ ] Passive health tracking (eject on failures)
+- [ ] **Test**: `tests/unit/test_rate_limiter.py` - Token bucket algorithm
 - [ ] Rate limiting (token bucket)
 
-**Deliverable:** Sidecar protects services from cascading failures.
+**Deliverable:** Sidecar protects services from cascading failures. All tests pass.
 
 ---
 
@@ -526,14 +618,17 @@ service-mesh-sidecar/
 
 **Goal:** Secure communication.
 
-**Tasks:**
+**Tasks (TDD per feature):**
+- [ ] **Test**: `tests/unit/test_tls.py` - TLS configuration loading
 - [ ] TLS termination (inbound)
 - [ ] TLS origination (outbound)
+- [ ] **Test**: `tests/integration/test_mtls.py` - mTLS handshake
 - [ ] mTLS support
 - [ ] Certificate management (initial: file-based)
+- [ ] **Test**: `tests/unit/test_auth.py` - API key / bearer token auth
 - [ ] Basic authentication (API key, bearer token)
 
-**Deliverable:** All inter-service traffic is encrypted.
+**Deliverable:** All inter-service traffic is encrypted. All tests pass.
 
 ---
 
@@ -541,14 +636,18 @@ service-mesh-sidecar/
 
 **Goal:** Full visibility into traffic.
 
-**Tasks:**
+**Tasks (TDD per feature):**
+- [ ] **Test**: `tests/unit/test_metrics.py` - Prometheus metrics collection
 - [ ] Prometheus metrics (request count, latency, errors)
+- [ ] **Test**: `tests/unit/test_tracing.py` - OpenTelemetry span creation
 - [ ] OpenTelemetry tracing integration
-- [ ] Structured JSON logging
+- [ ] **Test**: `tests/unit/test_logging.py` - Structured log output
+- [ ] Structured JSON logging (structlog)
 - [ ] Request/response logging (optional, debug mode)
+- [ ] **Test**: `tests/integration/test_admin_api.py` - FastAPI health endpoints
 - [ ] Health endpoint for sidecar itself (`/sidecar/health`)
 
-**Deliverable:** Sidecar exposes rich telemetry for monitoring.
+**Deliverable:** Sidecar exposes rich telemetry for monitoring. All tests pass.
 
 ---
 
@@ -556,16 +655,18 @@ service-mesh-sidecar/
 
 **Goal:** Production-ready enhancements.
 
-**Tasks:**
+**Tasks (TDD per feature):**
+- [ ] **Test**: `tests/unit/test_router.py` - Weighted routing
 - [ ] Weighted routing for canary/blue-green
 - [ ] Consistent hashing for session affinity
 - [ ] gRPC support (full protocol)
 - [ ] HTTP/2 support
+- [ ] **Test**: `tests/integration/test_config_reload.py` - Hot reload
 - [ ] Dynamic configuration reload (SIGHUP, API)
 - [ ] K8s-native discovery (endpoints API)
 - [ ] SPIFFE/SPIRE integration for mTLS
 
-**Deliverable:** Feature-complete sidecar for production use.
+**Deliverable:** Feature-complete sidecar for production use. All tests pass.
 
 ---
 
@@ -665,40 +766,143 @@ telemetry:
 
 ---
 
-## 8. Testing Strategy
+## 8. Testing Strategy (Test-Driven Development)
 
-### 8.1 Unit Tests
+> **Core Principle**: Tests are written **before** implementation. Each feature follows the Red-Green-Refactor cycle.
 
-- Test each pipeline component in isolation
-- Mock dependencies (backend servers, discovery)
-- Cover edge cases (timeouts, errors, malformed requests)
+### 8.1 TDD Workflow
 
-### 8.2 Integration Tests
+For every feature or component:
 
-- Test component interactions
-- Test full request pipeline
-- Test circuit breaker state transitions
-- Test rate limiting accuracy
+1. **Red**: Write a failing test that defines expected behavior
+2. **Green**: Implement minimal code to make the test pass
+3. **Refactor**: Clean up code while keeping tests green
 
-### 8.3 E2E Tests
+**Example TDD Cycle for Circuit Breaker:**
+```python
+# tests/unit/test_circuit_breaker.py  (WRITE FIRST)
+import pytest
+from sidecar.pipeline.circuit_breaker import CircuitBreaker, State
 
-- Deploy sidecar with mock services
-- Verify routing, load balancing, failover
-- Verify mTLS handshake
-- Verify telemetry collection
+@pytest.mark.asyncio
+async def test_circuit_breaker_opens_after_threshold():
+    """Circuit breaker should open after N consecutive failures."""
+    cb = CircuitBreaker(failure_threshold=3)
+    
+    # Simulate failures
+    for _ in range(3):
+        await cb.record_failure()
+    
+    assert cb.state == State.OPEN
+    assert not cb.allow_request()
 
-### 8.4 Performance Tests
+@pytest.mark.asyncio
+async def test_circuit_breaker_half_open_after_timeout():
+    """Circuit breaker should transition to half-open after timeout."""
+    cb = CircuitBreaker(failure_threshold=2, timeout=0.1)
+    
+    await cb.record_failure()
+    await cb.record_failure()
+    assert cb.state == State.OPEN
+    
+    await asyncio.sleep(0.15)  # Wait for timeout
+    assert cb.state == State.HALF_OPEN
+```
 
-- Benchmark request throughput
-- Measure latency overhead (target: <1ms p99)
+### 8.2 Unit Tests (pytest + pytest-asyncio)
+
+- Test each pipeline component in isolation with mocked dependencies
+- Use `pytest-asyncio` for async function testing
+- Use `respx` / `aioresponses` to mock HTTP calls
+- Cover edge cases: timeouts, errors, malformed requests, race conditions
+
+**Test File Structure:**
+```python
+# tests/unit/test_rate_limiter.py
+import pytest
+from sidecar.pipeline.rate_limit import TokenBucketRateLimiter
+
+@pytest.fixture
+def rate_limiter():
+    return TokenBucketRateLimiter(rate=10, burst=20)
+
+@pytest.mark.asyncio
+async def test_allows_requests_under_limit(rate_limiter):
+    for _ in range(10):
+        assert await rate_limiter.allow("client-1") is True
+
+@pytest.mark.asyncio
+async def test_rejects_when_bucket_empty(rate_limiter):
+    for _ in range(20):
+        await rate_limiter.allow("client-2")
+    assert await rate_limiter.allow("client-2") is False
+```
+
+### 8.3 Integration Tests
+
+- Test component interactions (e.g., router + load balancer)
+- Test full request pipeline end-to-end in-process
+- Test circuit breaker state transitions with real timing
+- Test rate limiting accuracy under load
+
+**Use real components, mock only external services:**
+```python
+# tests/integration/test_pipeline.py
+import pytest
+from sidecar.pipeline import RequestPipeline
+
+@pytest.mark.asyncio
+async def test_full_pipeline_flow():
+    pipeline = RequestPipeline(config=test_config)
+    # Real components, mock only discovery/backend
+    with respx.mock:
+        respx.get("http://backend:8080/health").mock(return_value=Response(200))
+        response = await pipeline.process(request)
+        assert response.status_code == 200
+```
+
+### 8.4 E2E Tests
+
+- Deploy sidecar with mock backend services
+- Verify routing, load balancing, failover behavior
+- Verify mTLS handshake (if enabled)
+- Verify telemetry collection (metrics, traces)
+- Use Docker Compose for isolated test environment
+
+### 8.5 Performance Tests
+
+- Benchmark request throughput (locust, wrk)
+- Measure latency overhead (target: <5ms p99 added by sidecar)
 - Test under high connection counts
 - Stress test rate limiter and circuit breaker
 
-### 8.5 Security Tests
+### 8.6 Security Tests
 
 - Verify mTLS enforcement
 - Test certificate validation
 - Penetration testing for common vulnerabilities
+
+### 8.7 Test Commands
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=sidecar --cov-report=html
+
+# Run only unit tests
+pytest tests/unit/
+
+# Run only async tests
+pytest -k "async"
+
+# Run with verbose output
+pytest -v
+
+# Run specific test
+pytest tests/unit/test_circuit_breaker.py::test_circuit_breaker_opens_after_threshold
+```
 
 ---
 
@@ -754,23 +958,46 @@ spec:
 
 ## 10. Open Questions for Review
 
-1. **Language Choice**: Rust (performance, safety) vs Go (ecosystem, simplicity) vs other?
-2. **Control Plane**: Should we build a centralized control plane (like Istio), or keep it config-file based?
-3. **Scope**: Focus on HTTP/gRPC first, or support additional protocols (TCP, Redis, etc.)?
-4. **K8s Dependency**: Tightly coupled to K8s, or support standalone/container-only deployments?
-5. **mTLS Provider**: Build our own PKI, or integrate with existing (SPIFFE, cert-manager)?
-6. **Observability Backend**: Assume Prometheus + Grafana + Jaeger, or support other backends?
-7. **API Compatibility**: Should the sidecar be Envoy-compatible (xDS API) for interoperability?
+1. **Control Plane**: Should we build a centralized control plane (like Istio), or keep it config-file based?
+2. **Scope**: Focus on HTTP/gRPC first, or support additional protocols (TCP, Redis, etc.)?
+3. **K8s Dependency**: Tightly coupled to K8s, or support standalone/container-only deployments?
+4. **mTLS Provider**: Build our own PKI, or integrate with existing (SPIFFE, cert-manager)?
+5. **Observability Backend**: Assume Prometheus + Grafana + Jaeger, or support other backends?
+6. **API Compatibility**: Should the sidecar be Envoy-compatible (xDS API) for interoperability?
+7. **Async Framework**: Use FastAPI for admin API only, or also for proxy listeners? (aiohttp vs FastAPI)
 
 ---
 
-## 11. Next Steps
+## 11. Next Steps (Test-Driven Workflow)
 
 1. **Review this plan** – Provide feedback on architecture, features, tech stack
-2. **Decide on language** – Based on team expertise and requirements
-3. **Create project skeleton** – Initialize repo with chosen language
-4. **Implement Phase 1** – Foundation/MVP
-5. **Iterate** – Build features incrementally, gather feedback
+2. **Answer open questions** – Confirm decisions (control plane, scope, etc.)
+3. **Initialize Python project** – Create `pyproject.toml`, `sidecar/` package, `tests/` structure
+4. **Setup dev environment** – Install deps: `pip install -e ".[dev]"` and run `pytest` (should show 0 tests)
+5. **Start TDD cycle** – For each Phase 1 task:
+   - Write test first → verify Red
+   - Implement → verify Green
+   - Refactor → verify Green
+6. **Implement Phase 1** – Foundation/MVP (all tests must pass)
+7. **Iterate** – Build features incrementally following TDD, gather feedback
+
+**Quick Start Commands:**
+```bash
+# Setup
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+# TDD workflow
+pytest tests/unit/test_config.py -v        # Write test, run (Red)
+# ... implement ...
+pytest tests/unit/test_config.py -v        # Run (Green)
+
+# Run all tests
+pytest
+
+# Coverage
+pytest --cov=sidecar --cov-report=term-missing
+```
 
 ---
 
@@ -809,6 +1036,8 @@ spec:
 
 ---
 
-*Document Version: 1.0*
-*Created: 2026-03-25*
-*Status: Draft - Awaiting Review*
+*Document Version: 1.1*
+*Updated: 2026-03-25*
+*Status: Updated - Python 3 + TDD*
+*Language: Python 3 (aiohttp, httpx, fastapi, uvicorn, pydantic, pytest, pytest-asyncio)*
+*Approach: Test-Driven Development*
