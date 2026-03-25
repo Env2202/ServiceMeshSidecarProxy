@@ -16,27 +16,32 @@ This document outlines a comprehensive plan for building a service mesh sidecar 
 - **Ensure reliability**: Handle failures gracefully with retries, circuit breakers, and timeouts.
 - **Support gradual adoption**: Services can opt-in without major refactoring.
 
-### 1.2 Key Features
+### 1.2 Key Features (POC Scope)
 
 | Feature | Description |
 |---------|-------------|
-| **Service Discovery** | Dynamic resolution of service endpoints |
-| **Routing** | Path-based, header-based, and weighted routing |
-| **Load Balancing** | Round-robin, least-connections, random, consistent hashing |
+| **Service Discovery** | DNS-based or static endpoint resolution |
+| **Routing** | Path-based, header-based, and host-based routing |
+| **Load Balancing** | Round-robin, least-connections |
 | **Circuit Breaker** | Fail-fast patterns for downstream protection |
-| **Rate Limiting** | Per-client and global rate limiting |
-| **Health Checks** | Active and passive health monitoring |
-| **Retry Logic** | Configurable retry with backoff strategies |
+| **Rate Limiting** | Per-client and global rate limiting (token bucket) |
+| **Health Checks** | Active HTTP probes and passive failure tracking |
+| **Retry Logic** | Configurable retry with exponential backoff |
 | **Timeout Handling** | Request and connection timeouts |
-| **mTLS** | Mutual TLS for service-to-service security |
-| **Telemetry** | Metrics, tracing, and logging |
+| **Telemetry** | Prometheus metrics only (request count, latency, errors) |
 
-### 1.3 Non-Goals (Out of Scope for v1)
+### 1.3 Non-Goals (Out of Scope for POC)
 
-- Centralized control plane (can be added later)
+- Centralized control plane (config-file based only)
 - Service mesh visualization UI
 - Multi-datacenter/multi-region federation
-- Legacy protocol support (beyond HTTP/HTTPS/gRPC)
+- Non-HTTP protocols (gRPC, TCP, Redis, etc.)
+- Kubernetes integration (no K8s client, no sidecar injection)
+- mTLS / TLS termination (plain HTTP only)
+- Distributed tracing (Prometheus metrics only)
+- Envoy/xDS API compatibility
+
+> **POC Scope**: Simple HTTP proxy sidecar with config-file based routing, load balancing, circuit breaker, rate limiting, health checks, and Prometheus metrics. Deployable standalone or in containers.
 
 ---
 
@@ -67,10 +72,10 @@ This document outlines a comprehensive plan for building a service mesh sidecar 
 │                                  │  ├─────────────────────────┤  │  │
 │                                  │  │  Retry Handler          │  │  │
 │                                  │  ├─────────────────────────┤  │  │
-│                                  │  │  mTLS / Security        │  │  │
+│                                  │  │  (Security: Deferred)   │  │  │
 │                                  │  ├─────────────────────────┤  │  │
-│                                  │  │  Telemetry (Metrics/    │  │  │
-│                                  │  │  Tracing/Logging)       │  │  │
+│                                  │  │  Telemetry (Prometheus  │  │  │
+│                                  │  │  Metrics + Logging)     │  │  │
 │                                  │  └─────────────────────────┘  │  │
 │                                  └───────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
@@ -83,7 +88,7 @@ This document outlines a comprehensive plan for building a service mesh sidecar 
 2. Sidecar intercepts and resolves destination service
 3. Applies routing rules, load balancing, rate limits
 4. Checks circuit breaker state
-5. Establishes connection (with mTLS if enabled)
+5. Establishes plain HTTP connection to backend (no TLS in POC)
 6. Forwards request to actual backend
 7. Handles retries/timeouts on failure
 8. Returns response to application
@@ -122,7 +127,7 @@ This document outlines a comprehensive plan for building a service mesh sidecar 
 │  │  └─────────────────────────────────────────────────────────┘ ││
 │  │                                                │           ││
 │  │  ┌─────────────────────────────────────────────┴─────────┐ ││
-│  │  │              Connection Pool + mTLS                     │ ││
+│  │  │              Connection Pool (plain HTTP)               │ ││
 │  │  └─────────────────────────────────────────────────────────┘ ││
 │  └─────────────────────────────────────────────────────────────┘│
 │                              │                                  │
@@ -290,22 +295,20 @@ retry:
     jitter: 0.2  # ±20%
 ```
 
-### 3.7 Security (mTLS)
+### 3.7 Security (Deferred for POC)
 
-**Features:**
-- Automatic certificate generation and rotation
-- mTLS between all services
-- Configurable TLS modes (strict, permissive, disabled)
-- SPIFFE/SPIRE integration (optional)
+> **POC Decision**: Security features are skipped. Plain HTTP only.
 
-**TLS Modes:**
-| Mode | Description |
-|------|-------------|
-| `STRICT` | Require mTLS, reject plaintext |
-| `PERMISSIVE` | Accept both TLS and plaintext |
-| `DISABLE` | No TLS |
+**Features (Post-POC):**
+- TLS termination (inbound)
+- TLS origination (outbound)
+- mTLS between services
+- Configurable TLS modes
+- SPIFFE/SPIRE integration
 
-### 3.8 Telemetry
+**Note**: The architecture is designed to add security later. For POC, all traffic is plain HTTP.
+
+### 3.8 Telemetry (POC: Prometheus Metrics Only)
 
 **Metrics (Prometheus format):**
 - Request count, latency (p50, p99), error rates
@@ -314,15 +317,14 @@ retry:
 - Connection pool stats
 - Health check results
 
-**Tracing:**
-- OpenTelemetry integration
-- W3C Trace Context propagation
-- B3 propagation support
+**Tracing (Deferred):**
+- OpenTelemetry integration *(Post-POC)*
+- W3C Trace Context propagation *(Post-POC)*
 
 **Logging:**
-- Structured JSON logs
+- Structured JSON logs (structlog)
 - Configurable log levels per component
-- Request/response logging (sanitized)
+- Request/response logging (debug mode)
 
 ---
 
@@ -550,16 +552,16 @@ target-version = "py310"
 
 **Tasks:**
 - [ ] **Test**: `tests/unit/test_config.py` - Pydantic config schema validation
-- [ ] **Test**: `tests/unit/test_main.py` - CLI argument parsing
+- [ ] **Test**: `tests/unit/test_main.py` - CLI argument parsing (click)
 - [ ] Project scaffolding: `pyproject.toml`, `sidecar/` package structure
-- [ ] **Test**: `tests/integration/test_inbound_listener.py` - aiohttp inbound server
-- [ ] **Test**: `tests/integration/test_outbound_listener.py` - aiohttp outbound client
+- [ ] **Test**: `tests/integration/test_inbound_listener.py` - aiohttp inbound server (:15000)
+- [ ] **Test**: `tests/integration/test_outbound_listener.py` - aiohttp outbound client (:15001)
 - [ ] Basic HTTP proxy (inbound → backend, outbound → destination)
 - [ ] **Test**: `tests/unit/test_config_loader.py` - YAML config loading
 - [ ] Configuration file loading (YAML via Pydantic)
 - [ ] CLI with basic options (config path, ports) using Click
 - [ ] Basic structured logging with structlog
-- [ ] Dockerfile and basic K8s manifests
+- [ ] Dockerfile (container-only, no K8s-specific)
 
 **Deliverable:** Sidecar can proxy HTTP traffic between services. All tests pass.
 
@@ -614,59 +616,68 @@ target-version = "py310"
 
 ---
 
-### Phase 4: Security
+### Phase 4: Security (SKIPPED FOR POC)
 
-**Goal:** Secure communication.
+> **POC Decision**: Security features (TLS, mTLS) are deferred. Plain HTTP only.
 
-**Tasks (TDD per feature):**
-- [ ] **Test**: `tests/unit/test_tls.py` - TLS configuration loading
-- [ ] TLS termination (inbound)
-- [ ] TLS origination (outbound)
-- [ ] **Test**: `tests/integration/test_mtls.py` - mTLS handshake
-- [ ] mTLS support
-- [ ] Certificate management (initial: file-based)
-- [ ] **Test**: `tests/unit/test_auth.py` - API key / bearer token auth
-- [ ] Basic authentication (API key, bearer token)
+**Goal:** Secure communication. *(Out of scope for POC)*
 
-**Deliverable:** All inter-service traffic is encrypted. All tests pass.
+**Deferred Tasks:**
+- TLS termination (inbound)
+- TLS origination (outbound)
+- mTLS support
+- Certificate management
+- Authentication (API key, bearer token)
+
+**Note**: Phase 4 tasks can be added post-POC if needed. The architecture is designed to accommodate security layers later.
 
 ---
 
-### Phase 5: Observability
+**Deliverable (POC):** N/A - skipped.
 
-**Goal:** Full visibility into traffic.
+---
+
+### Phase 5: Observability (Prometheus Metrics Only)
+
+**Goal:** Visibility into traffic via Prometheus metrics.
+
+> **POC Decision**: Prometheus metrics only. OpenTelemetry tracing deferred.
 
 **Tasks (TDD per feature):**
 - [ ] **Test**: `tests/unit/test_metrics.py` - Prometheus metrics collection
-- [ ] Prometheus metrics (request count, latency, errors)
-- [ ] **Test**: `tests/unit/test_tracing.py` - OpenTelemetry span creation
-- [ ] OpenTelemetry tracing integration
+- [ ] Prometheus metrics (request count, latency p50/p99, errors, circuit breaker state)
 - [ ] **Test**: `tests/unit/test_logging.py` - Structured log output
-- [ ] Structured JSON logging (structlog)
-- [ ] Request/response logging (optional, debug mode)
-- [ ] **Test**: `tests/integration/test_admin_api.py` - FastAPI health endpoints
-- [ ] Health endpoint for sidecar itself (`/sidecar/health`)
+- [ ] Structured JSON logging with structlog
+- [ ] Request/response logging (debug mode)
+- [ ] **Test**: `tests/integration/test_admin_api.py` - FastAPI admin endpoints
+- [ ] Admin endpoints: `/sidecar/health`, `/sidecar/ready`, `/sidecar/metrics`
 
-**Deliverable:** Sidecar exposes rich telemetry for monitoring. All tests pass.
+**Deferred (Post-POC):**
+- OpenTelemetry tracing integration
+- Distributed tracing (W3C Trace Context propagation)
+
+**Deliverable:** Sidecar exposes Prometheus metrics at `/sidecar/metrics`. All tests pass.
 
 ---
 
-### Phase 6: Advanced Features
+### Phase 6: Advanced Features (MOSTLY POST-POC)
 
-**Goal:** Production-ready enhancements.
+> **POC Decision**: Focus on core features. Advanced features deferred.
+
+**Goal:** Production-ready enhancements. *(Mostly out of scope for POC)*
 
 **Tasks (TDD per feature):**
-- [ ] **Test**: `tests/unit/test_router.py` - Weighted routing
-- [ ] Weighted routing for canary/blue-green
-- [ ] Consistent hashing for session affinity
-- [ ] gRPC support (full protocol)
-- [ ] HTTP/2 support
-- [ ] **Test**: `tests/integration/test_config_reload.py` - Hot reload
-- [ ] Dynamic configuration reload (SIGHUP, API)
-- [ ] K8s-native discovery (endpoints API)
-- [ ] SPIFFE/SPIRE integration for mTLS
+- [ ] **Test**: `tests/unit/test_router.py` - Weighted routing *(Nice to have)*
+- [ ] Weighted routing for canary/blue-green *(Nice to have)*
+- [ ] Consistent hashing for session affinity *(Post-POC)*
+- [ ] gRPC support *(Post-POC - HTTP only for POC)*
+- [ ] HTTP/2 support *(Post-POC - HTTP/1.1 only)*
+- [ ] **Test**: `tests/integration/test_config_reload.py` - Hot reload *(Post-POC)*
+- [ ] Dynamic configuration reload (SIGHUP, API) *(Post-POC)*
+- [ ] K8s-native discovery *(Post-POC - DNS/static only)*
+- [ ] SPIFFE/SPIRE integration *(Post-POC)*
 
-**Deliverable:** Feature-complete sidecar for production use. All tests pass.
+**POC Deliverable:** Core sidecar with config-file based routing, LB, CB, rate limiting, health checks, and Prometheus metrics. All core tests pass.
 
 ---
 
@@ -865,7 +876,7 @@ async def test_full_pipeline_flow():
 
 - Deploy sidecar with mock backend services
 - Verify routing, load balancing, failover behavior
-- Verify mTLS handshake (if enabled)
+- Verify HTTP proxy flow (no mTLS in POC)
 - Verify telemetry collection (metrics, traces)
 - Use Docker Compose for isolated test environment
 
@@ -878,9 +889,9 @@ async def test_full_pipeline_flow():
 
 ### 8.6 Security Tests
 
-- Verify mTLS enforcement
-- Test certificate validation
-- Penetration testing for common vulnerabilities
+- (Security tests deferred for POC - plain HTTP)
+- Basic auth tests (if added post-POC)
+- Penetration testing (post-POC)
 
 ### 8.7 Test Commands
 
@@ -908,33 +919,43 @@ pytest tests/unit/test_circuit_breaker.py::test_circuit_breaker_opens_after_thre
 
 ## 9. Deployment Considerations
 
-### 9.1 Kubernetes Integration
+### 9.1 Deployment (POC: Container/Standalone Only)
 
-**Sidecar Injection:**
-- Use `initContainer` or `MutatingWebhook` for automatic injection
-- Example pod spec with sidecar:
+> **POC Decision**: No Kubernetes integration. Deploy as standalone process or container.
 
+**Standalone:**
+```bash
+python -m sidecar --config ./sidecar-config.yaml
+```
+
+**Container (Docker):**
+```dockerfile
+FROM python:3.10-slim
+WORKDIR /app
+COPY . .
+RUN pip install -e .
+CMD ["python", "-m", "sidecar", "--config", "/config/sidecar-config.yaml"]
+```
+
+**Example docker-compose.yml:**
 ```yaml
-spec:
-  containers:
-    - name: app
-      image: my-service:latest
-      ports:
-        - containerPort: 8080
-    - name: sidecar
-      image: service-mesh-sidecar:latest
-      args: ["--config", "/etc/sidecar/config.yaml"]
-      ports:
-        - containerPort: 15000
-        - containerPort: 15001
-        - containerPort: 15002
-      volumeMounts:
-        - name: sidecar-config
-          mountPath: /etc/sidecar
-  volumes:
-    - name: sidecar-config
-      configMap:
-        name: sidecar-config
+version: "3.8"
+services:
+  my-service:
+    image: my-service:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      - sidecar
+  sidecar:
+    image: service-mesh-sidecar:latest
+    ports:
+      - "15000:15000"  # inbound
+      - "15001:15001"  # outbound
+      - "15002:15002"  # admin/metrics
+    volumes:
+      - ./sidecar-config.yaml:/config/sidecar-config.yaml
+    command: ["--config", "/config/sidecar-config.yaml"]
 ```
 
 ### 9.2 Resource Requirements
@@ -945,26 +966,38 @@ spec:
 | Memory | 128Mi | 256Mi |
 | Disk | 50Mi | 100Mi |
 
-### 9.3 Health Endpoints
+### 9.3 Health Endpoints (FastAPI Admin API)
 
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /sidecar/health` | Liveness probe |
 | `GET /sidecar/ready` | Readiness probe |
 | `GET /sidecar/metrics` | Prometheus metrics |
-| `GET /sidecar/config` | Current configuration (admin) |
+| `GET /sidecar/config` | Current configuration (debug) |
 
 ---
 
-## 10. Open Questions for Review
+## 10. Design Decisions (POC Scope)
 
-1. **Control Plane**: Should we build a centralized control plane (like Istio), or keep it config-file based?
-2. **Scope**: Focus on HTTP/gRPC first, or support additional protocols (TCP, Redis, etc.)?
-3. **K8s Dependency**: Tightly coupled to K8s, or support standalone/container-only deployments?
-4. **mTLS Provider**: Build our own PKI, or integrate with existing (SPIFFE, cert-manager)?
-5. **Observability Backend**: Assume Prometheus + Grafana + Jaeger, or support other backends?
-6. **API Compatibility**: Should the sidecar be Envoy-compatible (xDS API) for interoperability?
-7. **Async Framework**: Use FastAPI for admin API only, or also for proxy listeners? (aiohttp vs FastAPI)
+The following decisions have been made for this POC:
+
+| # | Decision | Choice |
+|---|----------|--------|
+| 1 | **Control Plane** | Config-file based (YAML). No centralized control plane. |
+| 2 | **Scope** | HTTP only. This is a POC; no gRPC, TCP, or other protocols. |
+| 3 | **K8s Dependency** | None. Standalone or container-only deployment. |
+| 4 | **mTLS** | Skipped for POC. Plain HTTP only. |
+| 5 | **Observability** | Prometheus metrics only. No tracing (OpenTelemetry deferred). |
+| 6 | **API Compatibility** | No Envoy/xDS compatibility. Simple custom YAML config. |
+| 7 | **Async Framework** | FastAPI for admin API only; aiohttp handles async proxy listeners. |
+
+**Implications for Implementation:**
+- No K8s-specific code (no client-go equivalent, no sidecar injection)
+- No TLS/mTLS code paths
+- No gRPC protocol support
+- No distributed tracing (metrics only via prometheus-client)
+- Simpler config schema (no xDS, no SPIFFE)
+- Clear separation: `aiohttp` for proxy, `fastapi/uvicorn` for `/sidecar/*` admin endpoints
 
 ---
 
@@ -1001,25 +1034,27 @@ pytest --cov=sidecar --cov-report=term-missing
 
 ---
 
-## Appendix A: Feature Comparison Matrix
+## Appendix A: Feature Comparison Matrix (POC Scope)
 
-| Feature | Phase | Priority | Complexity |
-|---------|-------|----------|------------|
-| Basic HTTP proxy | 1 | Must | Low |
-| Path-based routing | 2 | Must | Medium |
-| Round-robin LB | 2 | Must | Low |
-| Least-connections LB | 2 | Should | Low |
-| Circuit breaker | 3 | Must | Medium |
-| Retry with backoff | 3 | Must | Low |
-| Active health checks | 3 | Must | Medium |
-| Token bucket rate limit | 3 | Should | Medium |
-| TLS termination | 4 | Must | High |
-| mTLS | 4 | Must | High |
-| Prometheus metrics | 5 | Must | Low |
-| OpenTelemetry tracing | 5 | Should | Medium |
-| gRPC support | 6 | Should | High |
-| K8s discovery | 6 | Should | Medium |
-| Weighted routing | 6 | Nice | Low |
+| Feature | Phase | Priority | Complexity | Status |
+|---------|-------|----------|------------|--------|
+| Basic HTTP proxy | 1 | Must | Low | ✅ In Scope |
+| Path-based routing | 2 | Must | Medium | ✅ In Scope |
+| Round-robin LB | 2 | Must | Low | ✅ In Scope |
+| Least-connections LB | 2 | Should | Low | ✅ In Scope |
+| Circuit breaker | 3 | Must | Medium | ✅ In Scope |
+| Retry with backoff | 3 | Must | Low | ✅ In Scope |
+| Active health checks | 3 | Must | Medium | ✅ In Scope |
+| Token bucket rate limit | 3 | Should | Medium | ✅ In Scope |
+| TLS termination | 4 | - | High | ❌ Skipped (POC) |
+| mTLS | 4 | - | High | ❌ Skipped (POC) |
+| Prometheus metrics | 5 | Must | Low | ✅ In Scope |
+| OpenTelemetry tracing | 5 | - | Medium | ❌ Deferred |
+| gRPC support | 6 | - | High | ❌ Skipped (POC) |
+| K8s discovery | 6 | - | Medium | ❌ Skipped (POC) |
+| Weighted routing | 6 | Nice | Low | ⚪ Nice to have |
+| Consistent hashing | 6 | - | Medium | ❌ Skipped (POC) |
+| HTTP/2 | 6 | - | Medium | ❌ Skipped (POC) |
 
 ---
 
@@ -1036,8 +1071,9 @@ pytest --cov=sidecar --cov-report=term-missing
 
 ---
 
-*Document Version: 1.1*
+*Document Version: 1.2*
 *Updated: 2026-03-25*
-*Status: Updated - Python 3 + TDD*
+*Status: Finalized for POC*
 *Language: Python 3 (aiohttp, httpx, fastapi, uvicorn, pydantic, pytest, pytest-asyncio)*
 *Approach: Test-Driven Development*
+*POC Scope: HTTP only, config-file based, no K8s, no mTLS, Prometheus metrics only*
