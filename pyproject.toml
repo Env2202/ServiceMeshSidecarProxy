@@ -1,0 +1,42 @@
+# pyproject.toml - Project metadata, dependencies, tooling (placeholder)
+# TODO: Fill in per plan section 5
+
+[project]
+name = "service-mesh-sidecar"
+version = "0.1.0"
+description = "Service mesh sidecar proxy (POC)"
+requires-python = ">=3.10"
+dependencies = [
+    # Core
+    "aiohttp>=3.9",
+    "httpx>=0.26",
+    "fastapi>=0.109",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "pyyaml>=6.0",
+    "click>=8.1",
+    "tenacity>=8.2",
+    "prometheus-client>=0.19",
+    "structlog>=24.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "respx>=0.21",
+    "aioresponses>=0.7",
+    "ruff>=0.2",
+    "mypy>=1.8",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --cov=sidecar --cov-report=term-missing"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"

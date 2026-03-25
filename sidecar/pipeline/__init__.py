@@ -1,0 +1,1 @@
+# sidecar/pipeline package (placeholder)

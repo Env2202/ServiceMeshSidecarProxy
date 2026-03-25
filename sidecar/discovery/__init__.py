@@ -1,0 +1,1 @@
+# sidecar/discovery package (placeholder)

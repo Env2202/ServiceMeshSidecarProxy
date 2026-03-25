@@ -1,0 +1,1 @@
+# sidecar/telemetry package (placeholder)

@@ -1,0 +1,32 @@
+# basic-config.yaml (placeholder per plan)
+version: "1.0"
+
+server:
+  inbound_port: 15000
+  outbound_port: 15001
+  admin_port: 15002
+
+logging:
+  level: info
+  format: json
+
+discovery:
+  type: static  # DNS or static (no K8s per POC)
+
+routes:
+  - name: backend
+    match:
+      host: backend.local
+    cluster:
+      name: backend
+      endpoints:
+        - address: backend
+          port: 8080
+      load_balancing:
+        algorithm: round_robin
+
+telemetry:
+  metrics:
+    enabled: true
+    port: 15002
+    path: /sidecar/metrics
