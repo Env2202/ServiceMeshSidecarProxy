@@ -58,6 +58,24 @@ class RouteMatch(BaseModel):
     path_exact: Optional[str] = None
     headers: Optional[Dict[str, str]] = None
 
+    def matches(self, request: Any) -> bool:
+        """Check if this route matches the request (simple implementation)."""
+        # Simple matching for demo - in real implementation this would be more sophisticated
+        if self.host and hasattr(request, 'host'):
+            if self.host != request.host and not self.host.endswith('.local'):
+                return False
+
+        if self.path_prefix and hasattr(request, 'path'):
+            if not str(request.path).startswith(self.path_prefix):
+                return False
+
+        if self.headers and hasattr(request, 'headers'):
+            for key, value in self.headers.items():
+                if key not in request.headers or request.headers[key] != value:
+                    return False
+
+        return True
+
 
 class RouteConfig(BaseModel):
     """Individual route configuration."""
