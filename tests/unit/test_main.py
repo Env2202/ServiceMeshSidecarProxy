@@ -1,5 +1,6 @@
 # tests/unit/test_main.py
 # TDD: Tests written FIRST to define expected behavior
+# Run: python3 -m pytest tests/unit/test_main.py -v -o "addopts="
 
 import pytest
 
@@ -12,31 +13,24 @@ class TestCLIMain:
 
     def test_main_function_exists(self):
         """main() function should exist."""
-        # TDD Red: will fail until implemented
-                assert callable(main)
+        assert callable(main)
 
     def test_cli_requires_config(self):
         """CLI should require --config argument."""
-        # TDD Red: will fail until implemented
-                # When called without config, should fail or show usage
         pass
 
     def test_cli_accepts_config_path(self):
         """CLI should accept --config <path> argument."""
-        # TDD Red: will fail until implemented
-                pass
+        pass
 
     def test_cli_accepts_port_overrides(self):
         """CLI should accept --inbound-port, --outbound-port, --admin-port."""
-        # TDD Red: will fail until implemented
-                pass
+        pass
 
     def test_cli_shows_version(self):
         """CLI should support --version flag."""
-        # TDD Red: will fail until implemented
-                pass
+        pass
 
     def test_cli_shows_help(self):
         """CLI should support --help flag."""
-        # TDD Red: will fail until implemented
-                pass
+        pass

@@ -1,6 +1,0 @@
-# k8s-deployment.yaml (placeholder - NOT for POC)
-# Note: K8s not in scope for POC, but example kept for future reference
-# See SERVICE-MESH-SIDECAR-PLAN.md section 9.1
-
-# This file is a placeholder for post-POC K8s deployment
-# POC deploys as standalone process or container only
