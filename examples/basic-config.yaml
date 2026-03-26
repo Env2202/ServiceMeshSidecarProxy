@@ -1,4 +1,6 @@
-# basic-config.yaml (placeholder per plan)
+# basic-config.yaml - Example configuration for POC
+# Matches the Pydantic models in sidecar/config/settings.py
+
 version: "1.0"
 
 server:
@@ -6,27 +8,31 @@ server:
   outbound_port: 15001
   admin_port: 15002
 
-logging:
-  level: info
-  format: json
-
 discovery:
-  type: static  # DNS or static (no K8s per POC)
+  type: static
+  refresh_interval: 30
 
 routes:
   - name: backend
     match:
       host: backend.local
-    cluster:
-      name: backend
-      endpoints:
-        - address: backend
-          port: 8080
-      load_balancing:
-        algorithm: round_robin
+    cluster: backend
+    timeout: 30
+    weight: 100
+
+rate_limits:
+  - scope: global
+    limit: 1000
+    window: 1
+  - scope: client
+    limit: 100
+    window: 1
 
 telemetry:
-  metrics:
-    enabled: true
-    port: 15002
-    path: /sidecar/metrics
+  enabled: true
+  port: 15002
+  path: /sidecar/metrics
+
+logging:
+  level: info
+  format: json
