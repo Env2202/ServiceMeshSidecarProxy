@@ -22,10 +22,11 @@ class LoadBalancingType(str, Enum):
 
 
 class ServerConfig(BaseModel):
-    """Server configuration - ports for inbound, outbound, admin."""
-    inbound_port: int = Field(default=15000, ge=1, le=65535)
-    outbound_port: int = Field(default=15001, ge=1, le=65535)
-    admin_port: int = Field(default=15002, ge=1, le=65535)
+    """Server configuration - ports for inbound, outbound, admin.
+    All ports are required - user must explicitly set them."""
+    inbound_port: int = Field(ge=1, le=65535)
+    outbound_port: int = Field(ge=1, le=65535)
+    admin_port: int = Field(ge=1, le=65535)
 
     @field_validator('inbound_port', 'outbound_port', 'admin_port')
     @classmethod
