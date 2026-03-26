@@ -6,7 +6,8 @@ import pytest
 
 # TDD Red: import fails until sidecar.health.checker/tracker is implemented
 from sidecar.health.checker import HealthChecker, HealthStatus
-from sidecar.health.tracker import PassiveHealthTracker
+# PassiveHealthTracker is defined in checker.py to avoid import issues
+from sidecar.health.checker import PassiveHealthTracker
 
 
 class TestActiveHealthChecks:
