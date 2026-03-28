@@ -4,6 +4,7 @@ Service Mesh Sidecar Proxy Demo
 ===============================
 
 This script demonstrates the service mesh sidecar proxy with all components:
+- Request ID propagation and logging
 - Routing engine (path/header/host matching)
 - Load balancing (round-robin)
 - Circuit breaker
@@ -18,8 +19,10 @@ Run with: python3 test_proxy_demo.py
 import asyncio
 import time
 import json
+import sys
 from pathlib import Path
 from typing import Dict, Any
+from io import StringIO
 
 from sidecar.config.settings import SidecarConfig, ServerConfig, RouteConfig, RouteMatch, DiscoveryConfig
 from sidecar.config.loader import ConfigLoader
@@ -28,6 +31,8 @@ from sidecar.pipeline.load_balancer import RoundRobinBalancer, Endpoint
 from sidecar.pipeline.circuit_breaker import CircuitBreaker
 from sidecar.pipeline.rate_limit import TokenBucketRateLimiter
 from sidecar.telemetry.metrics import MetricsCollector
+from sidecar.telemetry.context import RequestContext, REQUEST_ID_CTX
+from sidecar.telemetry.logging import configure_logging, get_logger
 
 
 class MockBackend:
@@ -192,6 +197,69 @@ class ProxyDemo:
             if line.strip() and not line.startswith('#'):
                 print(f"   {line.strip()}")
 
+    async def demo_request_id_logging(self):
+        """Demonstrate request ID propagation through all components."""
+        print("\n" + "=" * 60)
+        print("🔍 Request ID Propagation Demo")
+        print("=" * 60)
+
+        # Configure logging to capture output
+        configure_logging(level="debug", format="json")
+
+        # Create request context with a specific request ID
+        request_id = "demo-req-abc123"
+        ctx = RequestContext.create(
+            method="GET",
+            path="/api/users",
+            existing_id=request_id
+        )
+        ctx.set_current()
+
+        print(f"\n📋 Created request context:")
+        print(f"   Request ID: {ctx.request_id}")
+        print(f"   Method: {ctx.method}")
+        print(f"   Path: {ctx.path}")
+
+        # Create a logger - it will automatically include the request_id
+        demo_logger = get_logger("demo")
+        demo_logger.info("Starting request processing demo")
+
+        # Create request object
+        request = type('Request', (), {
+            'host': 'backend.local',
+            'path': '/api/users',
+            'headers': {'X-Request-ID': request_id},
+            'method': 'GET'
+        })()
+
+        # Route the request (logs will include request_id)
+        print("\n🌐 Routing request...")
+        route = self.router.route(request)
+        if route:
+            print(f"   ✓ Routed to cluster: {route.cluster}")
+
+        # Load balancer selection (logs will include request_id)
+        print("\n⚖️  Load balancing...")
+        endpoint = self.load_balancer.select(request)
+        if endpoint:
+            print(f"   ✓ Selected endpoint: {endpoint.address}:{endpoint.port}")
+
+        # Circuit breaker check (logs will include request_id)
+        print("\n🔒 Circuit breaker check...")
+        if self.circuit_breaker.allow_request():
+            print(f"   ✓ Circuit breaker allows request (state: {self.circuit_breaker.get_state().value})")
+            await self.circuit_breaker.record_success()
+
+        # Rate limiter check (logs will include request_id)
+        print("\n⏱️  Rate limiting...")
+        if self.rate_limiter.allow("demo-client"):
+            print(f"   ✓ Rate limiter allows request")
+
+        demo_logger.info("Request processing complete", route=route.name if route else None)
+
+        print("\n✅ All components logged with request_id:", request_id)
+        print("   (Check logs above - each log entry includes the request_id)")
+
 
 async def demo():
     """Run the demo."""
@@ -201,6 +269,12 @@ async def demo():
 
     demo = ProxyDemo()
     demo.setup()
+
+    # Test 0: Request ID propagation and logging
+    print("\n" + "=" * 60)
+    print("FEATURE: Request ID Propagation & Structured Logging")
+    print("=" * 60)
+    await demo.demo_request_id_logging()
 
     # Test 1: Normal request
     print("\n" + "=" * 40)
@@ -240,6 +314,7 @@ async def demo():
     print("\n" + "=" * 60)
     print("🎉 Demo completed successfully!")
     print("The service mesh sidecar proxy is working with:")
+    print("   • Request ID propagation & structured logging")
     print("   • Routing engine")
     print("   • Load balancing")
     print("   • Circuit breaker")
