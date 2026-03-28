@@ -13,7 +13,7 @@ class TestJSONOutputStructure:
     """Tests for JSON log output structure and fields."""
 
     @pytest.fixture
-def captured_logs(self):
+    def captured_logs(self):
         """Fixture to capture log output."""
         log_capture = io.StringIO()
         handler = logging.StreamHandler(log_capture)
