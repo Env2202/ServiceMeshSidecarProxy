@@ -12,6 +12,9 @@ from ..pipeline.load_balancer import LoadBalancer, RoundRobinBalancer
 from ..pipeline.circuit_breaker import CircuitBreaker
 from ..pipeline.retry import RetryHandler
 from ..telemetry.metrics import MetricsCollector
+from ..telemetry.context import REQUEST_ID_CTX
+
+REQUEST_ID_HEADER = "X-Request-ID"
 
 
 class OutboundClient:
@@ -75,8 +78,16 @@ class OutboundClient:
             # Make the request to backend
             backend_url = f"http://{endpoint.address}:{endpoint.port}{request.path if hasattr(request, 'path') else '/'}"
 
+            # Get request_id from context and add to headers
+            headers = {}
             try:
-                response = await self.client.get(backend_url, timeout=5.0)
+                request_id = REQUEST_ID_CTX.get()
+                headers[REQUEST_ID_HEADER] = request_id
+            except LookupError:
+                pass  # No request_id in context
+
+            try:
+                response = await self.client.get(backend_url, headers=headers, timeout=5.0)
                 duration = time.time() - start_time
 
                 # Record success

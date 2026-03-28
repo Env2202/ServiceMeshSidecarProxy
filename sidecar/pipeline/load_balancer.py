@@ -5,6 +5,10 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import random
 
+from ..telemetry.logging import get_logger
+
+logger = get_logger("load_balancer")
+
 
 @dataclass
 class Endpoint:
@@ -65,6 +69,7 @@ class RoundRobinBalancer(LoadBalancer):
         """Select next endpoint in round-robin fashion."""
         healthy = self.get_healthy_endpoints()
         if not healthy:
+            logger.warning("No healthy endpoints available")
             return None
 
         if self._current_index >= len(healthy):
@@ -72,6 +77,12 @@ class RoundRobinBalancer(LoadBalancer):
 
         endpoint = healthy[self._current_index]
         self._current_index = (self._current_index + 1) % len(healthy)
+
+        logger.debug(
+            "Selected endpoint (round-robin)",
+            endpoint=f"{endpoint.address}:{endpoint.port}",
+            index=self._current_index
+        )
         return endpoint
 
 
@@ -82,11 +93,19 @@ class LeastConnectionsBalancer(LoadBalancer):
         """Select endpoint with fewest active connections."""
         healthy = self.get_healthy_endpoints()
         if not healthy:
+            logger.warning("No healthy endpoints available")
             return None
 
         # Pick endpoint with fewest active connections
         # On tie, pick first one (deterministic)
-        return min(healthy, key=lambda e: e.active_connections)
+        endpoint = min(healthy, key=lambda e: e.active_connections)
+
+        logger.debug(
+            "Selected endpoint (least-connections)",
+            endpoint=f"{endpoint.address}:{endpoint.port}",
+            active_connections=endpoint.active_connections
+        )
+        return endpoint
 
 
 class WeightedBalancer(LoadBalancer):
@@ -96,11 +115,13 @@ class WeightedBalancer(LoadBalancer):
         """Select endpoint based on weights."""
         healthy = self.get_healthy_endpoints()
         if not healthy:
+            logger.warning("No healthy endpoints available")
             return None
 
         # Simple weighted random selection
         total_weight = sum(e.weight for e in healthy)
         if total_weight == 0:
+            logger.warning("Total weight is zero, using first endpoint")
             return healthy[0]
 
         pick = random.randint(1, total_weight)
@@ -108,6 +129,11 @@ class WeightedBalancer(LoadBalancer):
         for endpoint in healthy:
             current += endpoint.weight
             if current >= pick:
+                logger.debug(
+                    "Selected endpoint (weighted)",
+                    endpoint=f"{endpoint.address}:{endpoint.port}",
+                    weight=endpoint.weight
+                )
                 return endpoint
         return healthy[0]  # fallback
 

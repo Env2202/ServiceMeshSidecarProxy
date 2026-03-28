@@ -5,6 +5,10 @@ from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 import re
 
+from ..telemetry.logging import get_logger
+
+logger = get_logger("router")
+
 
 @dataclass
 class RouteMatch:
@@ -64,9 +68,22 @@ class Router:
 
         Returns the matching Route or None if no match.
         """
+        path = getattr(request, 'path', 'unknown')
+        method = getattr(request, 'method', 'unknown')
+
+        logger.debug("Routing request", method=method, path=path)
+
         for route in self.routes:
             if route.matches(request):
+                logger.info(
+                    "Route matched",
+                    route=route.name,
+                    cluster=route.cluster,
+                    path=path
+                )
                 return route
+
+        logger.warning("No route matched", path=path)
         return None
 
     def get_cluster(self, request: Any) -> Optional[str]:

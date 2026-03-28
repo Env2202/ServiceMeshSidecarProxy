@@ -5,6 +5,10 @@ from typing import Dict, Optional
 import time
 from dataclasses import dataclass
 
+from ..telemetry.logging import get_logger
+
+logger = get_logger("rate_limiter")
+
 
 @dataclass
 class RateLimitConfig:
@@ -57,7 +61,22 @@ class RateLimiter:
             b = burst or self.default_burst
             self.buckets[key] = TokenBucket(r, b)
 
-        return self.buckets[key].consume(1)
+        allowed = self.buckets[key].consume(1)
+
+        if not allowed:
+            logger.warning(
+                "Rate limit exceeded",
+                key=key,
+                rate=rate or self.default_rate
+            )
+        else:
+            logger.debug(
+                "Request allowed",
+                key=key,
+                remaining_tokens=self.buckets[key].tokens
+            )
+
+        return allowed
 
     def reset(self, key: str = None):
         """Reset rate limiter for a key or all keys."""

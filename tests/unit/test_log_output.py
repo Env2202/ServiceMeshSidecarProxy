@@ -6,57 +6,49 @@ import pytest
 import json
 import logging
 import io
+import sys
 from datetime import datetime
+
+from sidecar.telemetry.logging import configure_logging, get_logger
+from sidecar.telemetry.context import RequestContext
 
 
 class TestJSONOutputStructure:
     """Tests for JSON log output structure and fields."""
 
-    @pytest.fixture
-    def captured_logs(self):
-        """Fixture to capture log output."""
-        log_capture = io.StringIO()
-        handler = logging.StreamHandler(log_capture)
-        handler.setLevel(logging.DEBUG)
-        root_logger = logging.getLogger()
-        root_logger.addHandler(handler)
-        root_logger.setLevel(logging.DEBUG)
-        yield log_capture
-        root_logger.removeHandler(handler)
-
-    def test_json_output_contains_timestamp(self, captured_logs):
+    def test_json_output_contains_timestamp(self):
         """JSON log output should contain timestamp field in ISO format."""
-        # TODO: Import and test once implemented
-        # from sidecar.telemetry.logging import configure_logging, get_logger
-        #
-        # configure_logging(level="debug", format="json")
-        # logger = get_logger("test")
-        # logger.info("test message")
-        #
-        # output = captured_logs.getvalue()
-        # log_entry = json.loads(output.strip())
-        #
-        # assert "timestamp" in log_entry
-        # # Verify it's a valid ISO timestamp
-        # timestamp = log_entry["timestamp"]
-        # datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-        pytest.fail("Test not yet implemented")
+        old_stdout = sys.stdout
+        sys.stdout = log_capture = io.StringIO()
 
-    def test_json_output_contains_level(self, captured_logs):
+        configure_logging(level="debug", format="json")
+        logger = get_logger("test")
+        logger.info("test message")
+
+        sys.stdout = old_stdout
+        output = log_capture.getvalue()
+        log_entry = json.loads(output.strip())
+
+        assert "timestamp" in log_entry
+        # Verify it's a valid ISO timestamp
+        timestamp = log_entry["timestamp"]
+        datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+
+    def test_json_output_contains_level(self):
         """JSON log output should contain level field."""
-        # TODO: Import and test once implemented
-        # from sidecar.telemetry.logging import configure_logging, get_logger
-        #
-        # configure_logging(level="debug", format="json")
-        # logger = get_logger("test")
-        # logger.info("test message")
-        #
-        # output = captured_logs.getvalue()
-        # log_entry = json.loads(output.strip())
-        #
-        # assert "level" in log_entry
-        # assert log_entry["level"] == "info"
-        pytest.fail("Test not yet implemented")
+        old_stdout = sys.stdout
+        sys.stdout = log_capture = io.StringIO()
+
+        configure_logging(level="debug", format="json")
+        logger = get_logger("test")
+        logger.info("test message")
+
+        sys.stdout = old_stdout
+        output = log_capture.getvalue()
+        log_entry = json.loads(output.strip())
+
+        assert "level" in log_entry
+        assert log_entry["level"] == "info"
 
     def test_json_output_contains_event(self, captured_logs):
         """JSON log output should contain event field with message."""

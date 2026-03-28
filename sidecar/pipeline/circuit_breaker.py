@@ -6,6 +6,10 @@ from typing import Optional
 import asyncio
 import time
 
+from ..telemetry.logging import get_logger
+
+logger = get_logger("circuit_breaker")
+
 
 class State(Enum):
     """Circuit breaker states."""
@@ -45,8 +49,13 @@ class CircuitBreaker:
         elif self.state == State.OPEN:
             # Check if timeout has passed
             if time.time() - self.last_failure_time > self.timeout:
+                logger.info(
+                    "Circuit breaker transitioning to HALF_OPEN",
+                    failure_count=self.failure_count
+                )
                 self.state = State.HALF_OPEN
                 return True
+            logger.debug("Circuit breaker OPEN - request rejected")
             return False
         elif self.state == State.HALF_OPEN:
             return True  # Allow one test request
@@ -59,6 +68,10 @@ class CircuitBreaker:
 
         if self.state == State.HALF_OPEN:
             if self.success_count >= self.success_threshold:
+                logger.info(
+                    "Circuit breaker CLOSED - service recovered",
+                    success_count=self.success_count
+                )
                 self.state = State.CLOSED
                 self.reset()
 
@@ -75,8 +88,14 @@ class CircuitBreaker:
             if (self.failure_count >= self.failure_threshold or
                 (self.total_requests >= self.volume_threshold and
                  self.total_failures / self.total_requests >= self.failure_rate_threshold)):
+                logger.warning(
+                    "Circuit breaker OPENED - too many failures",
+                    failure_count=self.failure_count,
+                    failure_rate=self.total_failures / self.total_requests if self.total_requests > 0 else 0
+                )
                 self.state = State.OPEN
         elif self.state == State.HALF_OPEN:
+            logger.warning("Circuit breaker OPENED - failure in half-open state")
             self.state = State.OPEN
             self.success_count = 0
 
