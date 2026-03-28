@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /c/Users/duyvn/source/xai/ServiceMeshSidecarProxy/sidecar/**/*.py)",
+      "Bash(git pull:*)",
+      "Bash(python:*)"
+    ]
+  }
+}
