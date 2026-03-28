@@ -2,7 +2,420 @@
 
 ## Overview
 
-This document outlines the phased implementation plan for adding request ID propagation with structured logging and tracing to the service mesh sidecar proxy. The implementation follows **Test-Driven Development (TDD)** principles.
+This document outlines the comprehensive design and phased implementation plan for adding request ID propagation with structured logging and tracing to the service mesh sidecar proxy. The implementation follows **Test-Driven Development (TDD)** principles.
+
+---
+
+## Table of Contents
+
+1. [Current State Analysis](#current-state-analysis)
+2. [Design Goals](#design-goals)
+3. [Proposed Architecture](#proposed-architecture)
+4. [Key Components](#key-components)
+5. [Integration Points](#integration-points)
+6. [Log Output Examples](#log-output-examples)
+7. [Benefits of This Design](#benefits-of-this-design)
+8. [Future Extensions](#future-extensions)
+9. [TDD Workflow](#tdd-workflow)
+10. [Execution Phases](#phase-1-foundation---request-context-infrastructure)
+11. [Definition of Done](#definition-of-done)
+
+---
+
+## Current State Analysis
+
+From reviewing the codebase, the following state was found:
+
+| Component | Current State |
+|-----------|---------------|
+| `telemetry/logging.py` | Placeholder - TODO to implement with structlog |
+| `telemetry/tracing.py` | Placeholder - OpenTelemetry deferred for POC |
+| `listeners/inbound.py` | Entry point at `:15000`, creates simple request objects |
+| `listeners/outbound.py` | HTTP client using httpx for forwarding |
+| Pipeline components | Router, LoadBalancer, CircuitBreaker, RateLimiter, RetryHandler - no request context |
+| Config (`settings.py`) | Has `logging: Dict[str, Any]` field |
+| Dependencies | `structlog>=24.1` already in pyproject.toml |
+
+### Request Flow Architecture (Current)
+
+```
+┌──────────────┐     ┌──────────────┐     ┌─────────────────────────────────────────┐
+│   Client     │────►│   Inbound    │────►│  Request Pipeline                       │
+│              │     │  Listener    │     │  ┌─────────┐ ┌──────────┐ ┌─────────┐  │
+└──────────────┘     └──────────────┘     │  │  Router │→│  Load    │→│ Circuit │  │
+                                          │  │         │ │ Balancer │ │ Breaker │  │
+                                          │  └─────────┘ └──────────┘ └────┬────┘  │
+                                          │                                  │      │
+                                          │  ┌───────────────────────────────┴───┐  │
+                                          │  │      Outbound HTTP Client        │  │
+                                          │  │  • Forward to backend service    │  │
+                                          │  └──────────────────────────────────┘  │
+                                          └─────────────────────────────────────────┘
+```
+
+---
+
+## Design Goals
+
+1. **Unique Request ID Generation**: Generate at inbound entry point
+2. **Context Propagation**: Pass ID through all pipeline components without changing every function signature
+3. **Header Propagation**: Forward ID to downstream services via HTTP headers
+4. **Structured Logging**: Include request ID in all log entries
+5. **Correlation**: Enable end-to-end tracing of a request's journey
+
+---
+
+## Proposed Architecture
+
+### Request Flow with Request ID
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              REQUEST FLOW WITH REQUEST ID                        │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                  │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────────────────────────┐ │
+│  │   Client     │────►│   Inbound    │────►│  RequestContext (async context)  │ │
+│  │              │     │  Listener    │     │  • request_id: "req-abc123"      │ │
+│  └──────────────┘     └──────────────┘     │  • start_time: timestamp         │ │
+│                            │               └──────────────────────────────────┘ │
+│                            │                         │                          │
+│                            ▼                         ▼                          │
+│                     ┌──────────────┐     ┌──────────────────────────────────┐  │
+│                     │ Extract/     │     │  Structured Logger (structlog)   │  │
+│                     │ Generate ID  │     │  • request_id bound to context   │  │
+│                     │ (Header/UUID)│     │  • component name auto-added     │  │
+│                     └──────────────┘     └──────────────────────────────────┘  │
+│                            │                                                     │
+│                            ▼                                                     │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │                         PIPELINE COMPONENTS                               │   │
+│  │  ┌─────────┐   ┌──────────┐   ┌─────────┐   ┌──────────┐   ┌──────────┐  │   │
+│  │  │ Router  │──►│Rate Limit│──►│Load Bal│──►│ Circuit  │──►│  Retry   │  │   │
+│  │  │         │   │          │   │         │   │ Breaker  │   │          │  │   │
+│  │  │ "route: │   │"rate:    │   │"select: │   │"state:   │   │"attempt: │  │   │
+│  │  │ users"  │   │ allowed" │   │ ep-1"   │   │ CLOSED"  │   │ 1/3"     │  │   │
+│  │  └─────────┘   └──────────┘   └─────────┘   └──────────┘   └──────────┘  │   │
+│  │       │                                                          │       │   │
+│  │       └──────────────────────────────────────────────────────────┘       │   │
+│  │                              │                                           │   │
+│  │                              ▼                                           │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐    │   │
+│  │  │                     Outbound HTTP Client                          │    │   │
+│  │  │  • Inject X-Request-ID header into outgoing request               │    │   │
+│  │  │  • Forward to backend service                                     │    │   │
+│  │  └──────────────────────────────────────────────────────────────────┘    │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+│                                          │                                       │
+│                                          ▼                                       │
+│  ┌──────────────┐     ┌─────────────────────────────────────────────────────┐   │
+│  │   Backend    │◄────│  Logs with request_id: "req-abc123" at each stage   │   │
+│  │   Service    │     │  • Metrics tagged with request_id (optional)        │   │
+│  └──────────────┘     │  • Response includes X-Request-ID header              │   │
+│                       └─────────────────────────────────────────────────────┘   │
+│                                                                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why contextvars?
+
+- Works with asyncio (essential for this sidecar)
+- Propagates through async/await calls automatically
+- No need to pass request_id through every function signature
+
+---
+
+## Key Components
+
+### 1. Request Context Module (`telemetry/context.py`)
+
+```python
+import contextvars
+from dataclasses import dataclass
+from typing import Optional
+import uuid
+
+REQUEST_ID_CTX: contextvars.ContextVar[str] = contextvars.ContextVar('request_id')
+START_TIME_CTX: contextvars.ContextVar[float] = contextvars.ContextVar('start_time')
+
+@dataclass
+class RequestContext:
+    request_id: str
+    start_time: float
+    method: Optional[str] = None
+    path: Optional[str] = None
+    route: Optional[str] = None
+    
+    @classmethod
+    def create(cls, method=None, path=None, existing_id=None) -> "RequestContext":
+        request_id = existing_id or f"req-{uuid.uuid4().hex[:12]}"
+        return cls(
+            request_id=request_id,
+            start_time=time.time(),
+            method=method,
+            path=path
+        )
+    
+    def set_current(self):
+        REQUEST_ID_CTX.set(self.request_id)
+        START_TIME_CTX.set(self.start_time)
+```
+
+### 2. Enhanced Logging Module (`telemetry/logging.py`)
+
+```python
+import structlog
+from contextvars import ContextVar
+from .context import REQUEST_ID_CTX
+
+def get_logger(component: str = None) -> structlog.stdlib.BoundLogger:
+    """
+    Get a structured logger with request_id automatically bound
+    from the current async context.
+    """
+    try:
+        request_id = REQUEST_ID_CTX.get()
+    except LookupError:
+        request_id = None
+    
+    logger = structlog.get_logger(component or "sidecar")
+    
+    if request_id:
+        return logger.bind(request_id=request_id, component=component)
+    return logger.bind(component=component)
+
+
+def configure_logging(level: str = "info", format: str = "json"):
+    """Configure structlog with processors for request context."""
+    structlog.configure(
+        processors=[
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.UnicodeDecoder(),
+            structlog.processors.JSONRenderer() if format == "json" 
+                else structlog.dev.ConsoleRenderer()
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+```
+
+### 3. Request ID Middleware (`listeners/middleware.py`)
+
+```python
+from aiohttp import web
+from ..telemetry.context import RequestContext
+from ..telemetry.logging import get_logger
+
+REQUEST_ID_HEADER = "X-Request-ID"
+logger = get_logger("middleware")
+
+@web.middleware
+async def request_context_middleware(request: web.Request, handler):
+    """
+    Middleware that:
+    1. Extracts or generates request ID
+    2. Sets up request context for the async call chain
+    3. Adds request ID to response headers
+    """
+    # Extract existing request ID or generate new one
+    request_id = request.headers.get(REQUEST_ID_HEADER)
+    
+    # Create and set context
+    context = RequestContext.create(
+        method=request.method,
+        path=request.path,
+        existing_id=request_id
+    )
+    context.set_current()
+    
+    request_logger = get_logger("inbound")
+    request_logger.info(
+        "Request started",
+        method=request.method,
+        path=request.path,
+        remote=request.remote,
+        user_agent=request.headers.get("User-Agent")
+    )
+    
+    try:
+        response = await handler(request)
+        
+        # Add request ID to response headers
+        response.headers[REQUEST_ID_HEADER] = context.request_id
+        
+        duration = time.time() - context.start_time
+        request_logger.info(
+            "Request completed",
+            status=response.status,
+            duration_ms=round(duration * 1000, 2)
+        )
+        
+        return response
+        
+    except Exception as e:
+        request_logger.error("Request failed", error=str(e))
+        raise
+```
+
+### 4. Outbound Request ID Propagation (`listeners/outbound.py`)
+
+Modify the outbound client to inject the request ID header:
+
+```python
+async def forward(self, request: Any) -> Dict[str, Any]:
+    from ..telemetry.context import REQUEST_ID_CTX
+    
+    # Build headers with request ID propagation
+    headers = {}
+    try:
+        request_id = REQUEST_ID_CTX.get()
+        headers["X-Request-ID"] = request_id
+    except LookupError:
+        pass  # No context, proceed without request ID
+    
+    # Make the request with headers
+    response = await self.client.get(
+        backend_url, 
+        timeout=5.0,
+        headers=headers
+    )
+```
+
+---
+
+## Integration Points
+
+Here's where to integrate in the existing codebase:
+
+| File | Integration Point | Change |
+|------|------------------|--------|
+| `telemetry/context.py` | New file | Add RequestContext with contextvars |
+| `telemetry/logging.py` | Replace placeholder | Implement structlog with context binding |
+| `listeners/inbound.py` | Add middleware | Attach request_context_middleware to app |
+| `listeners/outbound.py` | Modify `forward()` | Inject X-Request-ID header from context |
+| `pipeline/router.py` | Add logging | Use get_logger("router") for route decisions |
+| `pipeline/load_balancer.py` | Add logging | Log endpoint selection with request_id |
+| `pipeline/circuit_breaker.py` | Add logging | Log state transitions with request_id |
+| `config/settings.py` | Update TelemetryConfig | Add request_id_header config option |
+| `main.py` | Initialize logging | Call configure_logging() on startup |
+
+---
+
+## Log Output Examples
+
+With this design, logs will look like:
+
+```json
+// Request start (inbound listener)
+{
+  "request_id": "req-a1b2c3d4e5f6",
+  "component": "inbound",
+  "event": "Request started",
+  "method": "GET",
+  "path": "/api/users/123",
+  "remote": "10.0.0.5",
+  "timestamp": "2024-01-15T09:23:45.123Z",
+  "level": "info"
+}
+
+// Router decision
+{
+  "request_id": "req-a1b2c3d4e5f6",
+  "component": "router",
+  "event": "Route matched",
+  "route": "user-service",
+  "cluster": "users",
+  "timestamp": "2024-01-15T09:23:45.125Z",
+  "level": "debug"
+}
+
+// Load balancer selection
+{
+  "request_id": "req-a1b2c3d4e5f6",
+  "component": "load_balancer",
+  "event": "Endpoint selected",
+  "algorithm": "round_robin",
+  "endpoint": "user-service-2:8080",
+  "timestamp": "2024-01-15T09:23:45.126Z",
+  "level": "debug"
+}
+
+// Circuit breaker check
+{
+  "request_id": "req-a1b2c3d4e5f6",
+  "component": "circuit_breaker",
+  "event": "Request allowed",
+  "state": "CLOSED",
+  "cluster": "users",
+  "timestamp": "2024-01-15T09:23:45.127Z",
+  "level": "debug"
+}
+
+// Outbound request (forwarding)
+{
+  "request_id": "req-a1b2c3d4e5f6",
+  "component": "outbound",
+  "event": "Forwarding request",
+  "backend": "http://user-service-2:8080/api/users/123",
+  "timestamp": "2024-01-15T09:23:45.128Z",
+  "level": "info"
+}
+
+// Request completion
+{
+  "request_id": "req-a1b2c3d4e5f6",
+  "component": "inbound",
+  "event": "Request completed",
+  "status": 200,
+  "duration_ms": 45.23,
+  "timestamp": "2024-01-15T09:23:45.168Z",
+  "level": "info"
+}
+```
+
+---
+
+## Benefits of This Design
+
+1. **Minimal Code Changes**: Uses contextvars to avoid passing request_id through every function
+2. **Automatic Correlation**: All logs automatically include request_id when inside a request context
+3. **Header Propagation**: Downstream services receive the same request ID for end-to-end tracing
+4. **Structured Logs**: JSON format makes it easy to query by request_id in log aggregators (ELK, Loki, etc.)
+5. **Async-Safe**: contextvars properly handles concurrent requests with asyncio
+6. **Backward Compatible**: Components work without context (for background tasks)
+7. **Extensible**: Easy to add trace_id, span_id when OpenTelemetry is implemented later
+
+---
+
+## Future Extensions
+
+When you're ready to add OpenTelemetry tracing:
+
+```python
+# telemetry/tracing.py - Future enhancement
+from opentelemetry import trace
+from .context import REQUEST_ID_CTX
+
+tracer = trace.get_tracer("sidecar")
+
+def start_span(name: str):
+    # Link trace span with request ID
+    request_id = REQUEST_ID_CTX.get(None)
+    return tracer.start_as_current_span(
+        name,
+        attributes={"request.id": request_id}
+    )
+```
+
+This design provides a solid foundation for request tracking that can evolve into full distributed tracing when needed.
 
 ---
 
