@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y \
     python3-venv \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-ENV COMMIT_HASH=c095d475a3bd70dcc6eaa96e0918726a635e156f
+ENV COMMIT_HASH=320e4ac8656d973f3359a1c74c46fc79ce53d8d8
 ENV REPO_URL=https://github.com/Env2202/ServiceMeshSidecarProxy.git
 ENV REPO_NAME=ServiceMeshSidecarProxy
 
@@ -30,6 +30,10 @@ RUN pip3 install \
     "tenacity>=8.2" \
     "prometheus-client>=0.19" \
     "structlog>=24.1" \
+    "opentelemetry-api>=1.20" \
+    "opentelemetry-sdk>=1.20" \
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20" \
+    "opentelemetry-propagator-b3>=1.20" \
     "pytest>=7.4" \
     "pytest-asyncio>=0.23" \
     "pytest-cov>=4.1" \
