@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y \
     python3-venv \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-ENV COMMIT_HASH=320e4ac8656d973f3359a1c74c46fc79ce53d8d8
+ENV REPO_REF=main
 ENV REPO_URL=https://github.com/Env2202/ServiceMeshSidecarProxy.git
 ENV REPO_NAME=ServiceMeshSidecarProxy
 
@@ -14,7 +14,7 @@ WORKDIR /testbed/${REPO_NAME}
 
 RUN git init && \
     git remote add origin ${REPO_URL} && \
-    git fetch --depth 1 origin ${COMMIT_HASH} && \
+    git fetch --depth 1 origin ${REPO_REF} && \
     git checkout FETCH_HEAD && \
     git remote remove origin
 
